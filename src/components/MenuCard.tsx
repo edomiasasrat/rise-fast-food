@@ -43,9 +43,11 @@ export default function MenuCard({ item, qty, onChangeQty }: MenuCardProps) {
             color: "var(--muted)",
             marginTop: 4,
             lineHeight: 1.4,
+            lineClamp: 2,
+            WebkitLineClamp: 2,
+            display: "-webkit-box",
+            WebkitBoxOrient: "vertical",
             overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
           }}
         >
           {item.description}

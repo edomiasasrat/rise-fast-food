@@ -12,7 +12,7 @@ export default function AdminPage() {
   const [error, setError] = useState("");
 
   const [orders, setOrders] = useState<Order[]>([]);
-  const [stats, setStats] = useState({ orders_today: 0, revenue_today: 0, pending_count: 0 });
+  const [stats, setStats] = useState({ count: 0, revenue: 0, pending: 0 });
   const [loading, setLoading] = useState(false);
   const [newIds, setNewIds] = useState<Set<number>>(new Set());
   const knownIds = useRef<Set<number>>(new Set());
@@ -243,13 +243,13 @@ export default function AdminPage() {
         }}
       >
         {[
-          { label: "Orders Today", value: stats.orders_today, color: "var(--white)" },
+          { label: "Orders Today", value: stats.count, color: "var(--white)" },
           {
             label: "Revenue",
-            value: `${stats.revenue_today.toLocaleString()} Br`,
+            value: `${stats.revenue.toLocaleString()} Br`,
             color: "var(--yellow)",
           },
-          { label: "Pending", value: stats.pending_count, color: "var(--error)" },
+          { label: "Pending", value: stats.pending, color: "var(--error)" },
         ].map((stat) => (
           <div
             key={stat.label}
