@@ -295,7 +295,7 @@ export default function MiniGame() {
 
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
-  }, []);
+  }, [expanded]);
 
   // Keyboard
   useEffect(() => {
