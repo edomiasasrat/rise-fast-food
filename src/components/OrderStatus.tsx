@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Check, X, Upload, ShoppingBag, Loader2 } from "lucide-react";
 import type { Order, OrderStatus as OrderStatusType } from "@/lib/types";
+import MiniGame from "@/components/MiniGame";
 
 interface OrderStatusProps {
   orderNumber: string | null;
@@ -68,14 +69,13 @@ export default function OrderStatus({
   }, [orderNumber]);
 
   /* initial fetch */
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
-    if (!orderNumber) {
-      setOrder(null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    fetchOrder().finally(() => setLoading(false));
+    if (!orderNumber) { setOrder(null); setLoading(false); return; }
+    setLoading(true); // eslint-disable-line react-hooks/set-state-in-effect
+    let cancelled = false;
+    fetchOrder().finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [orderNumber, fetchOrder]);
 
   /* poll every 10 s while visible */
@@ -452,12 +452,20 @@ export default function OrderStatus({
         </div>
       )}
 
+      {/* Flappy Ertib while waiting */}
+      {order && order.status !== "completed" && order.status !== "rejected" && (
+        <div style={{ marginTop: 20, marginLeft: -20, marginRight: -20 }}>
+          <MiniGame />
+        </div>
+      )}
+
       {/* New Order button */}
       <button
         onClick={onNewOrder}
         style={{
           width: "100%",
           padding: "14px 0",
+          marginTop: 16,
           borderRadius: 12,
           border: "1.5px solid var(--surface-border)",
           background: "transparent",

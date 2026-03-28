@@ -6,7 +6,7 @@ import MenuCard from "@/components/MenuCard";
 import CartBar from "@/components/CartBar";
 import Checkout from "@/components/Checkout";
 import OrderStatusView from "@/components/OrderStatus";
-import ClosedOverlay from "@/components/ClosedOverlay";
+import MiniGame from "@/components/MiniGame";
 import type { MenuItem, CartItem } from "@/lib/types";
 
 const STORAGE_KEY = "rise_order";
@@ -178,7 +178,10 @@ export default function Home() {
     }
   }, [pushState]);
 
-  const hasLastOrder = typeof window !== "undefined" && !!localStorage.getItem("rise_last_items");
+  const [hasLastOrder, setHasLastOrder] = useState(false);
+  useEffect(() => {
+    setHasLastOrder(!!localStorage.getItem("rise_last_items"));
+  }, []);
 
   /* ---- Render ---- */
   if (showStatus) {
@@ -209,8 +212,32 @@ export default function Home() {
         color: "var(--white)",
       }}
     >
-      {isClosed && <ClosedOverlay />}
       <TopBar onMyOrders={handleMyOrders} />
+
+      {/* Closed banner instead of full overlay */}
+      {isClosed && (
+        <div style={{
+          background: "rgba(230,50,50,0.12)",
+          border: "1px solid rgba(230,50,50,0.3)",
+          borderRadius: 10,
+          padding: "12px 16px",
+          margin: "12px 16px 0",
+          maxWidth: 480,
+          marginLeft: "auto",
+          marginRight: "auto",
+          textAlign: "center",
+          fontSize: 14,
+          color: "var(--muted)",
+        }}>
+          <span style={{ color: "var(--red)", fontWeight: 600 }}>We&apos;re closed</span> — browse the menu, ordering opens at <span style={{ color: "var(--yellow)", fontWeight: 600 }}>7:00 AM</span>
+        </div>
+      )}
+
+      {isClosed && (
+        <div style={{ marginTop: 16 }}>
+          <MiniGame />
+        </div>
+      )}
 
       <main
         style={{
@@ -315,16 +342,19 @@ export default function Home() {
         )}
       </main>
 
-      <CartBar count={cartCount} total={cartTotal} onOpen={openCheckout} />
-
-      <Checkout
-        isOpen={checkoutOpen}
-        onClose={closeCheckout}
-        items={cartItems}
-        total={cartTotal}
-        onOrderPlaced={handleOrderPlaced}
-        onChangeQty={changeQty}
-      />
+      {!isClosed && (
+        <>
+          <CartBar count={cartCount} total={cartTotal} onOpen={openCheckout} />
+          <Checkout
+            isOpen={checkoutOpen}
+            onClose={closeCheckout}
+            items={cartItems}
+            total={cartTotal}
+            onOrderPlaced={handleOrderPlaced}
+            onChangeQty={changeQty}
+          />
+        </>
+      )}
     </div>
   );
 }
