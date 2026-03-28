@@ -6,12 +6,12 @@ const CANVAS_W = 360;
 const CANVAS_H = 500;
 const BIRD_SIZE = 28;
 const BIRD_X = 80;
-const GRAVITY = 0.45;
-const FLAP_FORCE = -7;
-const PIPE_WIDTH = 48;
-const PIPE_GAP = 135;
-const PIPE_SPEED = 2.5;
-const PIPE_SPAWN_DIST = 200;
+const GRAVITY = 0.3;
+const FLAP_FORCE = -6.5;
+const PIPE_WIDTH = 44;
+const PIPE_GAP = 170;
+const PIPE_SPEED_BASE = 1.8;
+const PIPE_SPAWN_DIST = 240;
 
 interface Pipe {
   x: number;
@@ -72,6 +72,7 @@ export default function MiniGame() {
       return;
     }
     if (s.playing) {
+      // Instant snap to flap velocity — ignore current velocity for responsive feel
       s.birdVel = FLAP_FORCE;
     }
   }, []);
@@ -241,15 +242,18 @@ export default function MiniGame() {
       // Spawn pipes
       const lastPipe = s.pipes[s.pipes.length - 1];
       if (!lastPipe || lastPipe.x < CANVAS_W - PIPE_SPAWN_DIST) {
-        const minGap = 80;
-        const maxGap = CANVAS_H - 80;
+        // Early pipes stay centered, later pipes get more extreme
+        const margin = Math.max(100 - s.score * 3, 60);
+        const minGap = margin;
+        const maxGap = CANVAS_H - margin;
         const gapY = minGap + Math.random() * (maxGap - minGap);
         s.pipes.push({ x: CANVAS_W + 20, gapY, scored: false });
       }
 
-      // Move pipes
+      // Move pipes — speed ramps up gradually after score 5
+      const pipeSpeed = PIPE_SPEED_BASE + Math.min(s.score * 0.08, 2);
       for (const pipe of s.pipes) {
-        pipe.x -= PIPE_SPEED;
+        pipe.x -= pipeSpeed;
 
         // Score
         if (!pipe.scored && pipe.x + PIPE_WIDTH < BIRD_X) {
