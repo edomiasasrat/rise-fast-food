@@ -3,6 +3,7 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { isOpen, generateOrderNumber } from "@/lib/utils";
 import { createOrder } from "@/lib/db";
+import { sendOrderNotification } from "@/lib/notify";
 
 export async function POST(req: NextRequest) {
   if (!isOpen()) {
@@ -85,6 +86,9 @@ export async function POST(req: NextRequest) {
     total,
     payment_screenshot: `/uploads/${filename}`,
   });
+
+  // Send Telegram notification (non-blocking)
+  sendOrderNotification(order).catch(() => {});
 
   return NextResponse.json({ order }, { status: 201 });
 }

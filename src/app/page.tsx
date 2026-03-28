@@ -4,22 +4,38 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import TopBar from "@/components/TopBar";
 import MenuCard from "@/components/MenuCard";
 import CartBar from "@/components/CartBar";
-import CartDrawer from "@/components/CartDrawer";
 import Checkout from "@/components/Checkout";
 import OrderStatusView from "@/components/OrderStatus";
 import ClosedOverlay from "@/components/ClosedOverlay";
-import { menuItems } from "@/lib/menu";
-import type { CartItem } from "@/lib/types";
+import type { MenuItem, CartItem } from "@/lib/types";
 
 const STORAGE_KEY = "rise_order";
 
 export default function Home() {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [activeOrder, setActiveOrder] = useState<string | null>(null);
   const [showStatus, setShowStatus] = useState(false);
   const [isClosed, setIsClosed] = useState(false);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [estimatedWait, setEstimatedWait] = useState("15");
+
+  /* ---- Fetch menu from API ---- */
+  useEffect(() => {
+    const fetchMenu = async () => {
+      try {
+        const res = await fetch("/api/menu");
+        const data = await res.json();
+        setMenuItems(data.items || []);
+      } catch {
+        /* keep empty */
+      } finally {
+        setMenuLoading(false);
+      }
+    };
+    fetchMenu();
+  }, []);
 
   /* ---- Fetch shop status on mount + every 60s ---- */
   useEffect(() => {
@@ -28,6 +44,7 @@ export default function Home() {
         const res = await fetch("/api/status");
         const data = await res.json();
         setIsClosed(data.open !== true);
+        if (data.estimated_wait) setEstimatedWait(data.estimated_wait);
       } catch {
         /* leave current state */
       }
@@ -49,18 +66,15 @@ export default function Home() {
   /* ---- Browser back/forward support ---- */
   useEffect(() => {
     const handlePop = () => {
-      // Close overlays in reverse stacking order
       if (checkoutOpen) {
         setCheckoutOpen(false);
-      } else if (cartOpen) {
-        setCartOpen(false);
       } else if (showStatus) {
         setShowStatus(false);
       }
     };
     window.addEventListener("popstate", handlePop);
     return () => window.removeEventListener("popstate", handlePop);
-  }, [checkoutOpen, cartOpen, showStatus]);
+  }, [checkoutOpen, showStatus]);
 
   const pushState = useCallback(() => {
     window.history.pushState(null, "");
@@ -76,7 +90,7 @@ export default function Home() {
         price: item.price,
         qty: quantities[item.id],
       }));
-  }, [quantities]);
+  }, [quantities, menuItems]);
 
   const cartCount = useMemo(
     () => cartItems.reduce((sum, i) => sum + i.qty, 0),
@@ -90,12 +104,12 @@ export default function Home() {
 
   const foodItems = useMemo(
     () => menuItems.filter((i) => i.category === "food"),
-    []
+    [menuItems]
   );
 
   const drinkItems = useMemo(
     () => menuItems.filter((i) => i.category === "drink"),
-    []
+    [menuItems]
   );
 
   /* ---- Handlers ---- */
@@ -137,17 +151,7 @@ export default function Home() {
     pushState();
   }, [pushState]);
 
-  const openCart = useCallback(() => {
-    setCartOpen(true);
-    pushState();
-  }, [pushState]);
-
-  const closeCart = useCallback(() => {
-    setCartOpen(false);
-  }, []);
-
   const openCheckout = useCallback(() => {
-    setCartOpen(false);
     setCheckoutOpen(true);
     pushState();
   }, [pushState]);
@@ -155,6 +159,26 @@ export default function Home() {
   const closeCheckout = useCallback(() => {
     setCheckoutOpen(false);
   }, []);
+
+  /* ---- Quick reorder ---- */
+  const handleReorder = useCallback(() => {
+    try {
+      const saved = localStorage.getItem("rise_last_items");
+      if (!saved) return;
+      const lastItems: CartItem[] = JSON.parse(saved);
+      const newQty: Record<string, number> = {};
+      for (const item of lastItems) {
+        newQty[item.id] = item.qty;
+      }
+      setQuantities(newQty);
+      setCheckoutOpen(true);
+      pushState();
+    } catch {
+      /* ignore bad data */
+    }
+  }, [pushState]);
+
+  const hasLastOrder = typeof window !== "undefined" && !!localStorage.getItem("rise_last_items");
 
   /* ---- Render ---- */
   if (showStatus) {
@@ -171,6 +195,7 @@ export default function Home() {
           orderNumber={activeOrder}
           onNewOrder={handleNewOrder}
           isVisible={showStatus}
+          estimatedWait={estimatedWait}
         />
       </div>
     );
@@ -194,65 +219,103 @@ export default function Home() {
           margin: "0 auto",
         }}
       >
+        {/* Quick Reorder */}
+        {hasLastOrder && cartCount === 0 && (
+          <button
+            onClick={handleReorder}
+            style={{
+              width: "100%",
+              padding: "14px 0",
+              marginBottom: 20,
+              borderRadius: 12,
+              border: "1.5px solid var(--yellow)",
+              background: "rgba(234,179,8,0.08)",
+              color: "var(--yellow)",
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+            }}
+          >
+            Order Again
+          </button>
+        )}
+
+        {menuLoading && (
+          <div
+            style={{
+              textAlign: "center",
+              color: "var(--muted)",
+              padding: "40px 0",
+              fontSize: 14,
+            }}
+          >
+            Loading menu...
+          </div>
+        )}
+
         {/* FOOD section */}
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            textTransform: "uppercase",
-            letterSpacing: 3,
-            color: "var(--red)",
-            marginBottom: 12,
-          }}
-        >
-          Food
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {foodItems.map((item) => (
-            <MenuCard
-              key={item.id}
-              item={item}
-              qty={quantities[item.id] ?? 0}
-              onChangeQty={(delta) => changeQty(item.id, delta)}
-            />
-          ))}
-        </div>
+        {foodItems.length > 0 && (
+          <>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: 3,
+                color: "var(--red)",
+                marginBottom: 12,
+              }}
+            >
+              Food
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {foodItems.map((item) => (
+                <MenuCard
+                  key={item.id}
+                  item={item}
+                  qty={quantities[item.id] ?? 0}
+                  onChangeQty={(delta) => changeQty(item.id, delta)}
+                />
+              ))}
+            </div>
+          </>
+        )}
 
         {/* DRINKS section */}
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            textTransform: "uppercase",
-            letterSpacing: 3,
-            color: "var(--red)",
-            marginTop: 24,
-            marginBottom: 12,
-          }}
-        >
-          Drinks
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {drinkItems.map((item) => (
-            <MenuCard
-              key={item.id}
-              item={item}
-              qty={quantities[item.id] ?? 0}
-              onChangeQty={(delta) => changeQty(item.id, delta)}
-            />
-          ))}
-        </div>
+        {drinkItems.length > 0 && (
+          <>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: 3,
+                color: "var(--red)",
+                marginTop: 24,
+                marginBottom: 12,
+              }}
+            >
+              Drinks
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {drinkItems.map((item) => (
+                <MenuCard
+                  key={item.id}
+                  item={item}
+                  qty={quantities[item.id] ?? 0}
+                  onChangeQty={(delta) => changeQty(item.id, delta)}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </main>
 
-      <CartBar count={cartCount} total={cartTotal} onOpen={openCart} />
-
-      <CartDrawer
-        isOpen={cartOpen}
-        onClose={closeCart}
-        items={cartItems}
-        total={cartTotal}
-        onCheckout={openCheckout}
-      />
+      <CartBar count={cartCount} total={cartTotal} onOpen={openCheckout} />
 
       <Checkout
         isOpen={checkoutOpen}
@@ -260,6 +323,7 @@ export default function Home() {
         items={cartItems}
         total={cartTotal}
         onOrderPlaced={handleOrderPlaced}
+        onChangeQty={changeQty}
       />
     </div>
   );

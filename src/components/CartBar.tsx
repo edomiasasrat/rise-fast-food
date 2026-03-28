@@ -47,7 +47,7 @@ export default function CartBar({ count, total, onOpen }: CartBarProps) {
           {count}
         </span>
         <span style={{ color: "var(--white)", fontSize: 15, fontWeight: 600 }}>
-          View Cart
+          Checkout
         </span>
       </div>
 

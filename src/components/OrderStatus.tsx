@@ -8,6 +8,7 @@ interface OrderStatusProps {
   orderNumber: string | null;
   onNewOrder: () => void;
   isVisible: boolean;
+  estimatedWait?: string;
 }
 
 const STEPS: { key: OrderStatusType | "out_for_delivery"; label: string }[] = [
@@ -35,6 +36,7 @@ export default function OrderStatus({
   orderNumber,
   onNewOrder,
   isVisible,
+  estimatedWait,
 }: OrderStatusProps) {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(false);
@@ -428,6 +430,25 @@ export default function OrderStatus({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Estimated wait time - shown when confirmed (not pending_review, not rejected, not completed) */}
+      {!isRejected && !isCompleted && order.status !== "pending_review" && estimatedWait && (
+        <div
+          style={{
+            textAlign: "center",
+            marginBottom: 24,
+            padding: "14px 16px",
+            background: "var(--surface)",
+            borderRadius: 12,
+            border: "1px solid var(--surface-border)",
+          }}
+        >
+          <span style={{ color: "var(--muted)", fontSize: 13 }}>Estimated wait</span>
+          <div style={{ color: "var(--yellow)", fontSize: 20, fontWeight: 700, marginTop: 4 }}>
+            ~{estimatedWait} min
+          </div>
         </div>
       )}
 

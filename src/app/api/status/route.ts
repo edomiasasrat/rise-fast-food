@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { isOpen } from "@/lib/utils";
+import { getConfig } from "@/lib/db";
 
 export async function GET() {
-  return NextResponse.json({ open: isOpen() });
+  const estimatedWait = getConfig("estimated_wait") || "15";
+  return NextResponse.json({ open: isOpen(), estimated_wait: estimatedWait });
 }

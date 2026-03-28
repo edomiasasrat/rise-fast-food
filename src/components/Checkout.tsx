@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { ArrowLeft, Upload, X } from "lucide-react";
+import { ArrowLeft, Upload, X, Minus, Plus, Trash2 } from "lucide-react";
 import type { CartItem } from "@/lib/types";
 
 interface CheckoutProps {
@@ -10,6 +10,7 @@ interface CheckoutProps {
   items: CartItem[];
   total: number;
   onOrderPlaced: (orderNumber: string) => void;
+  onChangeQty: (id: string, delta: number) => void;
 }
 
 export default function Checkout({
@@ -18,6 +19,7 @@ export default function Checkout({
   items,
   total,
   onOrderPlaced,
+  onChangeQty,
 }: CheckoutProps) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -33,6 +35,7 @@ export default function Checkout({
     name.trim() &&
     phone.trim() &&
     screenshot &&
+    items.length > 0 &&
     (orderType === "pickup" || building.trim()) &&
     !submitting;
 
@@ -83,6 +86,8 @@ export default function Checkout({
         return;
       }
 
+      // Save items for quick reorder
+      localStorage.setItem("rise_last_items", JSON.stringify(items));
       localStorage.setItem("rise_order", data.order.order_number);
       onOrderPlaced(data.order.order_number);
     } catch {
@@ -142,6 +147,173 @@ export default function Checkout({
       </div>
 
       <div style={{ padding: "20px 20px 100px" }}>
+        {/* YOUR ORDER - Cart items with +/- */}
+        <SectionLabel>Your Order</SectionLabel>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 0,
+            marginBottom: 20,
+            background: "var(--surface)",
+            borderRadius: 12,
+            overflow: "hidden",
+          }}
+        >
+          {items.length === 0 && (
+            <div
+              style={{
+                padding: "20px 16px",
+                textAlign: "center",
+                color: "var(--muted)",
+                fontSize: 14,
+              }}
+            >
+              Your cart is empty
+            </div>
+          )}
+          {items.map((item, idx) => (
+            <div
+              key={item.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px 14px",
+                borderBottom:
+                  idx < items.length - 1
+                    ? "1px solid var(--surface-border)"
+                    : "none",
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 500,
+                    color: "var(--white)",
+                  }}
+                >
+                  {item.name}
+                </div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "var(--muted)",
+                    marginTop: 2,
+                  }}
+                >
+                  {item.price} Birr each
+                </div>
+              </div>
+
+              {/* Qty controls */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginRight: 12,
+                }}
+              >
+                <button
+                  onClick={() => onChangeQty(item.id, -1)}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 6,
+                    background: "var(--bg)",
+                    border: "1px solid var(--surface-border)",
+                    color: item.qty <= 1 ? "var(--error)" : "var(--white)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  {item.qty <= 1 ? <Trash2 size={12} /> : <Minus size={12} />}
+                </button>
+                <span
+                  style={{
+                    minWidth: 18,
+                    textAlign: "center",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: "var(--white)",
+                  }}
+                >
+                  {item.qty}
+                </span>
+                <button
+                  onClick={() => onChangeQty(item.id, 1)}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 6,
+                    background: "var(--bg)",
+                    border: "1px solid var(--surface-border)",
+                    color: "var(--white)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  <Plus size={12} />
+                </button>
+              </div>
+
+              {/* Line total */}
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: "var(--yellow)",
+                  minWidth: 60,
+                  textAlign: "right",
+                }}
+              >
+                {item.price * item.qty} Birr
+              </div>
+            </div>
+          ))}
+
+          {/* Total row */}
+          {items.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "12px 14px",
+                borderTop: "1px solid var(--surface-border)",
+                background: "rgba(255,255,255,0.02)",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 15,
+                  fontWeight: 600,
+                  color: "var(--white)",
+                }}
+              >
+                Total
+              </span>
+              <span
+                style={{
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: "var(--yellow)",
+                }}
+              >
+                {total} Birr
+              </span>
+            </div>
+          )}
+        </div>
+
         {/* YOUR INFO */}
         <SectionLabel>Your Info</SectionLabel>
         <Input
