@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { ArrowLeft, Upload, X, Minus, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Upload, X, Minus, Plus, Trash2, Copy, Check } from "lucide-react";
 import type { CartItem } from "@/lib/types";
 
 interface CheckoutProps {
@@ -607,8 +607,12 @@ function PaymentRow({
         fontWeight: 600,
         color: copied ? "var(--success)" : "var(--white)",
         transition: "color 0.15s",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
       }}>
-        {copied ? "Copied!" : value}
+        {value}
+        {copied ? <Check size={14} /> : <Copy size={14} style={{ color: "var(--muted)" }} />}
       </span>
     </div>
   );
