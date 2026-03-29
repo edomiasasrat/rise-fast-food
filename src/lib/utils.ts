@@ -7,7 +7,9 @@ export function generateOrderNumber(): string {
 
 export function isOpen(): boolean {
   const now = new Date();
-  const hour = now.getHours();
+  // Ethiopia is UTC+3 (Africa/Addis_Ababa)
+  const ethTime = new Date(now.toLocaleString("en-US", { timeZone: "Africa/Addis_Ababa" }));
+  const hour = ethTime.getHours();
   return hour >= 7 && hour < 19;
 }
 
