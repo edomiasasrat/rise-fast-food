@@ -96,8 +96,11 @@ export default function Checkout({
     }
   };
 
-  const selectAll = (text: string) => {
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const copyText = (text: string, label: string) => {
     navigator.clipboard?.writeText(text);
+    setCopiedField(label);
+    setTimeout(() => setCopiedField(null), 1500);
   };
 
   return (
@@ -399,9 +402,9 @@ export default function Checkout({
             marginBottom: 20,
           }}
         >
-          <PaymentRow label="CBE Account" value="1000XXXXXXXX" onCopy={selectAll} />
-          <PaymentRow label="TeleBirr" value="09XXXXXXXX" onCopy={selectAll} />
-          <PaymentRow label="Account Name" value="Rise Fast Food" onCopy={selectAll} />
+          <PaymentRow label="CBE Account" value="1000XXXXXXXX" copyValue="1000XXXXXXXX" onCopy={copyText} copied={copiedField === "CBE Account"} />
+          <PaymentRow label="TeleBirr" value="09XXXXXXXX" copyValue="9XXXXXXXX" onCopy={copyText} copied={copiedField === "TeleBirr"} />
+          <PaymentRow label="Account Name" value="Rise Fast Food" copyValue="Rise Fast Food" onCopy={copyText} copied={copiedField === "Account Name"} />
         </div>
 
         {/* UPLOAD */}
@@ -576,31 +579,36 @@ function Input({
 function PaymentRow({
   label,
   value,
+  copyValue,
   onCopy,
+  copied,
 }: {
   label: string;
   value: string;
-  onCopy: (v: string) => void;
+  copyValue: string;
+  onCopy: (v: string, label: string) => void;
+  copied: boolean;
 }) {
   return (
     <div
+      onClick={() => onCopy(copyValue, label)}
       style={{
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
+        cursor: "pointer",
+        padding: "8px 0",
+        transition: "opacity 0.15s",
       }}
     >
       <span style={{ fontSize: 13, color: "var(--muted)" }}>{label}</span>
-      <span
-        onClick={() => onCopy(value)}
-        style={{
-          fontSize: 14,
-          fontWeight: 600,
-          cursor: "pointer",
-          userSelect: "all",
-        }}
-      >
-        {value}
+      <span style={{
+        fontSize: 14,
+        fontWeight: 600,
+        color: copied ? "var(--success)" : "var(--white)",
+        transition: "color 0.15s",
+      }}>
+        {copied ? "Copied!" : value}
       </span>
     </div>
   );
