@@ -404,7 +404,10 @@ export default function Checkout({
         >
           <PaymentRow label="CBE Account" value="1000XXXXXXXX" copyValue="1000XXXXXXXX" onCopy={copyText} copied={copiedField === "CBE Account"} />
           <PaymentRow label="TeleBirr" value="09XXXXXXXX" copyValue="9XXXXXXXX" onCopy={copyText} copied={copiedField === "TeleBirr"} />
-          <PaymentRow label="Account Name" value="Rise Fast Food" copyValue="Rise Fast Food" onCopy={copyText} copied={copiedField === "Account Name"} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0" }}>
+            <span style={{ fontSize: 13, color: "var(--muted)" }}>Account Name</span>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>Rise Fast Food</span>
+          </div>
         </div>
 
         {/* UPLOAD */}
