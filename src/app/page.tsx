@@ -20,6 +20,7 @@ export default function Home() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [estimatedWait, setEstimatedWait] = useState("15");
+  const [paymentConfig, setPaymentConfig] = useState<{ cbe_account: string; telebirr_number: string; account_name: string } | undefined>(undefined);
 
   /* ---- Fetch menu from API ---- */
   useEffect(() => {
@@ -45,6 +46,7 @@ export default function Home() {
         const data = await res.json();
         setIsClosed(data.open !== true);
         if (data.estimated_wait) setEstimatedWait(data.estimated_wait);
+        if (data.payment_config) setPaymentConfig(data.payment_config);
       } catch {
         /* leave current state */
       }
@@ -166,9 +168,10 @@ export default function Home() {
       const saved = localStorage.getItem("rise_last_items");
       if (!saved) return;
       const lastItems: CartItem[] = JSON.parse(saved);
+      const activeIds = new Set(menuItems.map((m) => m.id));
       const newQty: Record<string, number> = {};
       for (const item of lastItems) {
-        newQty[item.id] = item.qty;
+        if (activeIds.has(item.id)) newQty[item.id] = item.qty;
       }
       setQuantities(newQty);
       setCheckoutOpen(true);
@@ -176,7 +179,7 @@ export default function Home() {
     } catch {
       /* ignore bad data */
     }
-  }, [pushState]);
+  }, [pushState, menuItems]);
 
   const [hasLastOrder, setHasLastOrder] = useState(false);
   useEffect(() => {
@@ -352,6 +355,7 @@ export default function Home() {
             total={cartTotal}
             onOrderPlaced={handleOrderPlaced}
             onChangeQty={changeQty}
+            paymentConfig={paymentConfig}
           />
         </>
       )}

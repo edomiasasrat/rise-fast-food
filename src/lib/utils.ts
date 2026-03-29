@@ -1,18 +1,20 @@
 import crypto from "crypto";
 
 export function generateOrderNumber(): string {
-  const num = Math.floor(Math.random() * 9000) + 1000;
-  return `RSE-${num}`;
+  return `RSE-${Date.now().toString(36).toUpperCase()}`;
 }
 
 export function isOpen(): boolean {
-  const now = new Date();
-  // Ethiopia is UTC+3 (Africa/Addis_Ababa)
-  const ethTime = new Date(now.toLocaleString("en-US", { timeZone: "Africa/Addis_Ababa" }));
-  const hour = ethTime.getHours();
+  const hour = parseInt(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Africa/Addis_Ababa",
+      hour: "numeric",
+      hour12: false,
+    }).format(new Date())
+  );
   return hour >= 7 && hour < 19;
 }
 
 export function hashPin(pin: string): string {
-  return crypto.createHash("sha256").update(pin).digest("hex");
+  return crypto.createHash("sha256").update("rise-fast-food-salt:" + pin).digest("hex");
 }

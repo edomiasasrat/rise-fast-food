@@ -4,6 +4,12 @@ import { useState, useRef, useCallback } from "react";
 import { ArrowLeft, Upload, X, Minus, Plus, Trash2, Copy, Check } from "lucide-react";
 import type { CartItem } from "@/lib/types";
 
+interface PaymentConfig {
+  cbe_account: string;
+  telebirr_number: string;
+  account_name: string;
+}
+
 interface CheckoutProps {
   isOpen: boolean;
   onClose: () => void;
@@ -11,6 +17,7 @@ interface CheckoutProps {
   total: number;
   onOrderPlaced: (orderNumber: string) => void;
   onChangeQty: (id: string, delta: number) => void;
+  paymentConfig?: PaymentConfig;
 }
 
 export default function Checkout({
@@ -20,6 +27,7 @@ export default function Checkout({
   total,
   onOrderPlaced,
   onChangeQty,
+  paymentConfig,
 }: CheckoutProps) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -402,11 +410,11 @@ export default function Checkout({
             marginBottom: 20,
           }}
         >
-          <PaymentRow label="CBE Account" value="1000XXXXXXXX" copyValue="1000XXXXXXXX" onCopy={copyText} copied={copiedField === "CBE Account"} />
-          <PaymentRow label="TeleBirr" value="09XXXXXXXX" copyValue="9XXXXXXXX" onCopy={copyText} copied={copiedField === "TeleBirr"} />
+          <PaymentRow label="CBE Account" value={paymentConfig?.cbe_account || "1000XXXXXXXX"} copyValue={paymentConfig?.cbe_account || "1000XXXXXXXX"} onCopy={copyText} copied={copiedField === "CBE Account"} />
+          <PaymentRow label="TeleBirr" value={paymentConfig?.telebirr_number || "09XXXXXXXX"} copyValue={paymentConfig?.telebirr_number || "09XXXXXXXX"} onCopy={copyText} copied={copiedField === "TeleBirr"} />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0" }}>
             <span style={{ fontSize: 13, color: "var(--muted)" }}>Account Name</span>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>Rise Fast Food</span>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>{paymentConfig?.account_name || "Rise Fast Food"}</span>
           </div>
         </div>
 

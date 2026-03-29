@@ -8,12 +8,11 @@ const client = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN!,
 });
 
-let _initialized = false;
+let initPromise: Promise<void> | null = null;
 
 async function ensureInit() {
-  if (_initialized) return;
-  _initialized = true;
-  await initDb();
+  if (!initPromise) initPromise = initDb();
+  return initPromise;
 }
 
 async function initDb() {
@@ -51,37 +50,21 @@ async function initDb() {
     "write"
   );
 
-  // Seed config if empty
-  const configCheck = await client.execute({
-    sql: "SELECT key FROM rise_config WHERE key = 'admin_pin_hash'",
-    args: [],
-  });
-
-  if (configCheck.rows.length === 0) {
-    await client.batch(
-      [
-        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["admin_pin_hash", hashPin("1234")] },
-        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["delivery_pin_hash", hashPin("5678")] },
-        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["cbe_account", "1000XXXXXXXX"] },
-        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["telebirr_number", "09XXXXXXXX"] },
-        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["account_name", "Rise Fast Food"] },
-        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["telegram_bot_token", ""] },
-        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["telegram_chat_id", ""] },
-        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["estimated_wait", "15"] },
-      ],
-      "write"
-    );
-  } else {
-    // Ensure new config keys exist for existing databases
-    await client.batch(
-      [
-        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["telegram_bot_token", ""] },
-        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["telegram_chat_id", ""] },
-        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["estimated_wait", "15"] },
-      ],
-      "write"
-    );
-  }
+  // Always upsert PIN hashes (ensures salted hashes are current)
+  // Use INSERT OR REPLACE for PINs, INSERT OR IGNORE for other config
+  await client.batch(
+    [
+      { sql: "INSERT OR REPLACE INTO rise_config (key, value) VALUES (?, ?)", args: ["admin_pin_hash", hashPin("1234")] },
+      { sql: "INSERT OR REPLACE INTO rise_config (key, value) VALUES (?, ?)", args: ["delivery_pin_hash", hashPin("5678")] },
+      { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["cbe_account", "1000XXXXXXXX"] },
+      { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["telebirr_number", "09XXXXXXXX"] },
+      { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["account_name", "Rise Fast Food"] },
+      { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["telegram_bot_token", ""] },
+      { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["telegram_chat_id", ""] },
+      { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["estimated_wait", "15"] },
+    ],
+    "write"
+  );
 
   // Seed menu_items if empty
   const menuCount = await client.execute({
