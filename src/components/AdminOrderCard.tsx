@@ -155,7 +155,7 @@ export default function AdminOrderCard({ order, pin, onUpdate, isNew }: Props) {
       <div style={{
         position: "fixed",
         inset: 0,
-        zIndex: 80,
+        zIndex: 110,
         background: "var(--bg)",
         overflowY: "auto",
         animation: "slideIn 0.2s ease-out",
