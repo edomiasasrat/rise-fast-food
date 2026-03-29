@@ -4,7 +4,7 @@ import { sendTestNotification } from "@/lib/notify";
 
 export async function POST(req: NextRequest) {
   const pin = req.headers.get("x-admin-pin");
-  if (!pin || verifyPin(pin) !== "admin") {
+  if (!pin || (await verifyPin(pin)) !== "admin") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

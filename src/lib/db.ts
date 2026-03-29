@@ -1,98 +1,123 @@
-import Database from "better-sqlite3";
-import path from "path";
-import { Order, OrderRow, OrderStatus } from "./types";
+import { createClient } from "@libsql/client";
+import { Order, OrderStatus } from "./types";
 import { hashPin } from "./utils";
 import { menuItems as seedItems } from "./menu";
 
-const dbPath = path.join(process.cwd(), "database.sqlite");
+const client = createClient({
+  url: process.env.TURSO_DATABASE_URL!,
+  authToken: process.env.TURSO_AUTH_TOKEN!,
+});
 
-let _db: Database.Database | null = null;
+let _initialized = false;
 
-function getDb(): Database.Database {
-  if (!_db) {
-    _db = new Database(dbPath);
-    _db.pragma("journal_mode = WAL");
-    _db.pragma("foreign_keys = ON");
-    initDb(_db);
-  }
-  return _db;
+async function ensureInit() {
+  if (_initialized) return;
+  _initialized = true;
+  await initDb();
 }
 
-function initDb(db: Database.Database) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS orders (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      order_number TEXT UNIQUE NOT NULL,
-      customer_name TEXT NOT NULL,
-      customer_phone TEXT NOT NULL,
-      order_type TEXT NOT NULL CHECK(order_type IN ('pickup', 'delivery')),
-      delivery_location TEXT,
-      items TEXT NOT NULL,
-      total INTEGER NOT NULL,
-      payment_screenshot TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending_review',
-      reject_reason TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+async function initDb() {
+  await client.batch(
+    [
+      `CREATE TABLE IF NOT EXISTS rise_orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_number TEXT UNIQUE NOT NULL,
+        customer_name TEXT NOT NULL,
+        customer_phone TEXT NOT NULL,
+        order_type TEXT NOT NULL CHECK(order_type IN ('pickup', 'delivery')),
+        delivery_location TEXT,
+        items TEXT NOT NULL,
+        total INTEGER NOT NULL,
+        payment_screenshot TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending_review',
+        reject_reason TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS rise_config (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS rise_menu_items (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        price INTEGER NOT NULL,
+        category TEXT NOT NULL CHECK(category IN ('food', 'drink')),
+        active INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0
+      )`,
+    ],
+    "write"
+  );
 
-    CREATE TABLE IF NOT EXISTS config (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    );
+  // Seed config if empty
+  const configCheck = await client.execute({
+    sql: "SELECT key FROM rise_config WHERE key = 'admin_pin_hash'",
+    args: [],
+  });
 
-    CREATE TABLE IF NOT EXISTS menu_items (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT NOT NULL,
-      price INTEGER NOT NULL,
-      category TEXT NOT NULL CHECK(category IN ('food', 'drink')),
-      active INTEGER NOT NULL DEFAULT 1,
-      sort_order INTEGER NOT NULL DEFAULT 0
+  if (configCheck.rows.length === 0) {
+    await client.batch(
+      [
+        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["admin_pin_hash", hashPin("1234")] },
+        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["delivery_pin_hash", hashPin("5678")] },
+        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["cbe_account", "1000XXXXXXXX"] },
+        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["telebirr_number", "09XXXXXXXX"] },
+        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["account_name", "Rise Fast Food"] },
+        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["telegram_bot_token", ""] },
+        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["telegram_chat_id", ""] },
+        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["estimated_wait", "15"] },
+      ],
+      "write"
     );
-  `);
-
-  const existing = db.prepare("SELECT key FROM config WHERE key = 'admin_pin_hash'").get();
-  if (!existing) {
-    const stmt = db.prepare("INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)");
-    stmt.run("admin_pin_hash", hashPin("1234"));
-    stmt.run("delivery_pin_hash", hashPin("5678"));
-    stmt.run("cbe_account", "1000XXXXXXXX");
-    stmt.run("telebirr_number", "09XXXXXXXX");
-    stmt.run("account_name", "Rise Fast Food");
-    stmt.run("telegram_bot_token", "");
-    stmt.run("telegram_chat_id", "");
-    stmt.run("estimated_wait", "15");
   } else {
     // Ensure new config keys exist for existing databases
-    const stmt = db.prepare("INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)");
-    stmt.run("telegram_bot_token", "");
-    stmt.run("telegram_chat_id", "");
-    stmt.run("estimated_wait", "15");
+    await client.batch(
+      [
+        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["telegram_bot_token", ""] },
+        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["telegram_chat_id", ""] },
+        { sql: "INSERT OR IGNORE INTO rise_config (key, value) VALUES (?, ?)", args: ["estimated_wait", "15"] },
+      ],
+      "write"
+    );
   }
 
   // Seed menu_items if empty
-  const menuCount = (db.prepare("SELECT COUNT(*) as c FROM menu_items").get() as { c: number }).c;
-  if (menuCount === 0) {
-    const insertMenu = db.prepare(
-      "INSERT INTO menu_items (id, name, description, price, category, active, sort_order) VALUES (?, ?, ?, ?, ?, 1, ?)"
-    );
-    seedItems.forEach((item, index) => {
-      insertMenu.run(item.id, item.name, item.description, item.price, item.category, index);
-    });
+  const menuCount = await client.execute({
+    sql: "SELECT COUNT(*) as c FROM rise_menu_items",
+    args: [],
+  });
+  const count = (menuCount.rows[0] as unknown as { c: number }).c;
+
+  if (count === 0) {
+    const stmts = seedItems.map((item, index) => ({
+      sql: "INSERT INTO rise_menu_items (id, name, description, price, category, active, sort_order) VALUES (?, ?, ?, ?, ?, 1, ?)",
+      args: [item.id, item.name, item.description, item.price, item.category, index],
+    }));
+    await client.batch(stmts, "write");
   }
 }
 
-function rowToOrder(row: OrderRow): Order {
+function rowToOrder(row: Record<string, unknown>): Order {
   return {
-    ...row,
-    items: JSON.parse(row.items),
-    status: row.status as OrderStatus,
+    id: row.id as number,
+    order_number: row.order_number as string,
+    customer_name: row.customer_name as string,
+    customer_phone: row.customer_phone as string,
     order_type: row.order_type as "pickup" | "delivery",
+    delivery_location: row.delivery_location as string | null,
+    items: JSON.parse(row.items as string),
+    total: row.total as number,
+    payment_screenshot: row.payment_screenshot as string,
+    status: row.status as OrderStatus,
+    reject_reason: row.reject_reason as string | null,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
   };
 }
 
-export function createOrder(data: {
+export async function createOrder(data: {
   order_number: string;
   customer_name: string;
   customer_phone: string;
@@ -101,81 +126,154 @@ export function createOrder(data: {
   items: string;
   total: number;
   payment_screenshot: string;
-}): Order {
-  const db = getDb();
-  const stmt = db.prepare(`
-    INSERT INTO orders (order_number, customer_name, customer_phone, order_type, delivery_location, items, total, payment_screenshot)
-    VALUES (@order_number, @customer_name, @customer_phone, @order_type, @delivery_location, @items, @total, @payment_screenshot)
-  `);
-  stmt.run(data);
-  const row = db.prepare("SELECT * FROM orders WHERE order_number = ?").get(data.order_number) as OrderRow;
-  return rowToOrder(row);
+}): Promise<Order> {
+  await ensureInit();
+  await client.execute({
+    sql: `INSERT INTO rise_orders (order_number, customer_name, customer_phone, order_type, delivery_location, items, total, payment_screenshot)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      data.order_number,
+      data.customer_name,
+      data.customer_phone,
+      data.order_type,
+      data.delivery_location,
+      data.items,
+      data.total,
+      data.payment_screenshot,
+    ],
+  });
+  const result = await client.execute({
+    sql: "SELECT * FROM rise_orders WHERE order_number = ?",
+    args: [data.order_number],
+  });
+  return rowToOrder(result.rows[0] as unknown as Record<string, unknown>);
 }
 
-export function getOrderByNumber(orderNumber: string): Order | null {
-  const db = getDb();
-  const row = db.prepare("SELECT * FROM orders WHERE order_number = ?").get(orderNumber) as OrderRow | undefined;
-  return row ? rowToOrder(row) : null;
+export async function getOrderByNumber(orderNumber: string): Promise<Order | null> {
+  await ensureInit();
+  const result = await client.execute({
+    sql: "SELECT * FROM rise_orders WHERE order_number = ?",
+    args: [orderNumber],
+  });
+  if (result.rows.length === 0) return null;
+  return rowToOrder(result.rows[0] as unknown as Record<string, unknown>);
 }
 
-export function getAllOrders(): Order[] {
-  const db = getDb();
-  const rows = db.prepare("SELECT * FROM orders ORDER BY created_at DESC").all() as OrderRow[];
-  return rows.map(rowToOrder);
+export async function getAllOrders(): Promise<Order[]> {
+  await ensureInit();
+  const result = await client.execute({
+    sql: "SELECT * FROM rise_orders ORDER BY created_at DESC",
+    args: [],
+  });
+  return result.rows.map((row) => rowToOrder(row as unknown as Record<string, unknown>));
 }
 
-export function getDeliveryOrders(): Order[] {
-  const db = getDb();
-  const rows = db.prepare("SELECT * FROM orders WHERE status = 'out_for_delivery' ORDER BY updated_at DESC").all() as OrderRow[];
-  return rows.map(rowToOrder);
+export async function getDeliveryOrders(): Promise<Order[]> {
+  await ensureInit();
+  const result = await client.execute({
+    sql: "SELECT * FROM rise_orders WHERE status = 'out_for_delivery' ORDER BY updated_at DESC",
+    args: [],
+  });
+  return result.rows.map((row) => rowToOrder(row as unknown as Record<string, unknown>));
 }
 
-export function updateOrderStatus(id: number, status: OrderStatus, rejectReason?: string): Order | null {
-  const db = getDb();
+export async function updateOrderStatus(id: number, status: OrderStatus, rejectReason?: string): Promise<Order | null> {
+  await ensureInit();
   if (rejectReason) {
-    db.prepare("UPDATE orders SET status = ?, reject_reason = ?, updated_at = datetime('now') WHERE id = ?").run(status, rejectReason, id);
+    await client.execute({
+      sql: "UPDATE rise_orders SET status = ?, reject_reason = ?, updated_at = datetime('now') WHERE id = ?",
+      args: [status, rejectReason, id],
+    });
   } else {
-    db.prepare("UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, id);
+    await client.execute({
+      sql: "UPDATE rise_orders SET status = ?, updated_at = datetime('now') WHERE id = ?",
+      args: [status, id],
+    });
   }
-  const row = db.prepare("SELECT * FROM orders WHERE id = ?").get(id) as OrderRow | undefined;
-  return row ? rowToOrder(row) : null;
+  const result = await client.execute({
+    sql: "SELECT * FROM rise_orders WHERE id = ?",
+    args: [id],
+  });
+  if (result.rows.length === 0) return null;
+  return rowToOrder(result.rows[0] as unknown as Record<string, unknown>);
 }
 
-export function updateOrderScreenshot(orderNumber: string, screenshotPath: string): Order | null {
-  const db = getDb();
-  db.prepare("UPDATE orders SET payment_screenshot = ?, status = 'pending_review', reject_reason = NULL, updated_at = datetime('now') WHERE order_number = ?").run(screenshotPath, orderNumber);
-  const row = db.prepare("SELECT * FROM orders WHERE order_number = ?").get(orderNumber) as OrderRow | undefined;
-  return row ? rowToOrder(row) : null;
+export async function updateOrderScreenshot(orderNumber: string, screenshotUrl: string): Promise<Order | null> {
+  await ensureInit();
+  await client.execute({
+    sql: "UPDATE rise_orders SET payment_screenshot = ?, status = 'pending_review', reject_reason = NULL, updated_at = datetime('now') WHERE order_number = ?",
+    args: [screenshotUrl, orderNumber],
+  });
+  const result = await client.execute({
+    sql: "SELECT * FROM rise_orders WHERE order_number = ?",
+    args: [orderNumber],
+  });
+  if (result.rows.length === 0) return null;
+  return rowToOrder(result.rows[0] as unknown as Record<string, unknown>);
 }
 
-export function getTodayStats(): { count: number; revenue: number; pending: number; inQueue: number } {
-  const db = getDb();
+export async function getTodayStats(): Promise<{ count: number; revenue: number; pending: number; inQueue: number }> {
+  await ensureInit();
   const today = new Date().toISOString().split("T")[0];
-  const count = (db.prepare("SELECT COUNT(*) as c FROM orders WHERE date(created_at) = ?").get(today) as { c: number }).c;
-  const revenue = (db.prepare("SELECT COALESCE(SUM(total), 0) as r FROM orders WHERE date(created_at) = ? AND status NOT IN ('rejected')").get(today) as { r: number }).r;
-  const pending = (db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = 'pending_review'").get() as { c: number }).c;
-  const inQueue = (db.prepare("SELECT COUNT(*) as c FROM orders WHERE status NOT IN ('completed', 'rejected')").get() as { c: number }).c;
-  return { count, revenue, pending, inQueue };
+
+  const countRes = await client.execute({
+    sql: "SELECT COUNT(*) as c FROM rise_orders WHERE date(created_at) = ?",
+    args: [today],
+  });
+  const revenueRes = await client.execute({
+    sql: "SELECT COALESCE(SUM(total), 0) as r FROM rise_orders WHERE date(created_at) = ? AND status NOT IN ('rejected')",
+    args: [today],
+  });
+  const pendingRes = await client.execute({
+    sql: "SELECT COUNT(*) as c FROM rise_orders WHERE status = 'pending_review'",
+    args: [],
+  });
+  const inQueueRes = await client.execute({
+    sql: "SELECT COUNT(*) as c FROM rise_orders WHERE status NOT IN ('completed', 'rejected')",
+    args: [],
+  });
+
+  return {
+    count: Number((countRes.rows[0] as unknown as { c: number }).c),
+    revenue: Number((revenueRes.rows[0] as unknown as { r: number }).r),
+    pending: Number((pendingRes.rows[0] as unknown as { c: number }).c),
+    inQueue: Number((inQueueRes.rows[0] as unknown as { c: number }).c),
+  };
 }
 
-export function getConfig(key: string): string | null {
-  const db = getDb();
-  const row = db.prepare("SELECT value FROM config WHERE key = ?").get(key) as { value: string } | undefined;
-  return row?.value ?? null;
+export async function getConfig(key: string): Promise<string | null> {
+  await ensureInit();
+  const result = await client.execute({
+    sql: "SELECT value FROM rise_config WHERE key = ?",
+    args: [key],
+  });
+  if (result.rows.length === 0) return null;
+  return (result.rows[0] as unknown as { value: string }).value;
 }
 
-export function setConfig(key: string, value: string): void {
-  const db = getDb();
-  db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run(key, value);
+export async function setConfig(key: string, value: string): Promise<void> {
+  await ensureInit();
+  await client.execute({
+    sql: "INSERT OR REPLACE INTO rise_config (key, value) VALUES (?, ?)",
+    args: [key, value],
+  });
 }
 
-export function verifyPin(pin: string): "admin" | "delivery" | null {
-  const db = getDb();
+export async function verifyPin(pin: string): Promise<"admin" | "delivery" | null> {
+  await ensureInit();
   const hashed = hashPin(pin);
-  const adminHash = (db.prepare("SELECT value FROM config WHERE key = 'admin_pin_hash'").get() as { value: string } | undefined)?.value;
-  if (adminHash === hashed) return "admin";
-  const deliveryHash = (db.prepare("SELECT value FROM config WHERE key = 'delivery_pin_hash'").get() as { value: string } | undefined)?.value;
-  if (deliveryHash === hashed) return "delivery";
+  const adminRes = await client.execute({
+    sql: "SELECT value FROM rise_config WHERE key = 'admin_pin_hash'",
+    args: [],
+  });
+  if (adminRes.rows.length > 0 && (adminRes.rows[0] as unknown as { value: string }).value === hashed) return "admin";
+
+  const deliveryRes = await client.execute({
+    sql: "SELECT value FROM rise_config WHERE key = 'delivery_pin_hash'",
+    args: [],
+  });
+  if (deliveryRes.rows.length > 0 && (deliveryRes.rows[0] as unknown as { value: string }).value === hashed) return "delivery";
+
   return null;
 }
 
@@ -191,18 +289,38 @@ export interface MenuItemRow {
   sort_order: number;
 }
 
-export function getActiveMenuItems(): MenuItemRow[] {
-  const db = getDb();
-  return db.prepare("SELECT * FROM menu_items WHERE active = 1 ORDER BY sort_order ASC").all() as MenuItemRow[];
+function rowToMenuItem(row: Record<string, unknown>): MenuItemRow {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    description: row.description as string,
+    price: row.price as number,
+    category: row.category as string,
+    active: row.active as number,
+    sort_order: row.sort_order as number,
+  };
 }
 
-export function getAllMenuItems(): MenuItemRow[] {
-  const db = getDb();
-  return db.prepare("SELECT * FROM menu_items ORDER BY sort_order ASC").all() as MenuItemRow[];
+export async function getActiveMenuItems(): Promise<MenuItemRow[]> {
+  await ensureInit();
+  const result = await client.execute({
+    sql: "SELECT * FROM rise_menu_items WHERE active = 1 ORDER BY sort_order ASC",
+    args: [],
+  });
+  return result.rows.map((row) => rowToMenuItem(row as unknown as Record<string, unknown>));
 }
 
-export function updateMenuItem(id: string, fields: { name?: string; description?: string; price?: number; category?: string }): MenuItemRow | null {
-  const db = getDb();
+export async function getAllMenuItems(): Promise<MenuItemRow[]> {
+  await ensureInit();
+  const result = await client.execute({
+    sql: "SELECT * FROM rise_menu_items ORDER BY sort_order ASC",
+    args: [],
+  });
+  return result.rows.map((row) => rowToMenuItem(row as unknown as Record<string, unknown>));
+}
+
+export async function updateMenuItem(id: string, fields: { name?: string; description?: string; price?: number; category?: string }): Promise<MenuItemRow | null> {
+  await ensureInit();
   const sets: string[] = [];
   const vals: (string | number)[] = [];
   if (fields.name !== undefined) { sets.push("name = ?"); vals.push(fields.name); }
@@ -211,21 +329,46 @@ export function updateMenuItem(id: string, fields: { name?: string; description?
   if (fields.category !== undefined) { sets.push("category = ?"); vals.push(fields.category); }
   if (sets.length === 0) return null;
   vals.push(id);
-  db.prepare(`UPDATE menu_items SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
-  return db.prepare("SELECT * FROM menu_items WHERE id = ?").get(id) as MenuItemRow | null;
+  await client.execute({
+    sql: `UPDATE rise_menu_items SET ${sets.join(", ")} WHERE id = ?`,
+    args: vals,
+  });
+  const result = await client.execute({
+    sql: "SELECT * FROM rise_menu_items WHERE id = ?",
+    args: [id],
+  });
+  if (result.rows.length === 0) return null;
+  return rowToMenuItem(result.rows[0] as unknown as Record<string, unknown>);
 }
 
-export function createMenuItem(data: { id: string; name: string; description: string; price: number; category: string }): MenuItemRow {
-  const db = getDb();
-  const maxOrder = (db.prepare("SELECT COALESCE(MAX(sort_order), 0) as m FROM menu_items").get() as { m: number }).m;
-  db.prepare("INSERT INTO menu_items (id, name, description, price, category, active, sort_order) VALUES (?, ?, ?, ?, ?, 1, ?)").run(
-    data.id, data.name, data.description, data.price, data.category, maxOrder + 1
-  );
-  return db.prepare("SELECT * FROM menu_items WHERE id = ?").get(data.id) as MenuItemRow;
+export async function createMenuItem(data: { id: string; name: string; description: string; price: number; category: string }): Promise<MenuItemRow> {
+  await ensureInit();
+  const maxOrderRes = await client.execute({
+    sql: "SELECT COALESCE(MAX(sort_order), 0) as m FROM rise_menu_items",
+    args: [],
+  });
+  const maxOrder = (maxOrderRes.rows[0] as unknown as { m: number }).m;
+  await client.execute({
+    sql: "INSERT INTO rise_menu_items (id, name, description, price, category, active, sort_order) VALUES (?, ?, ?, ?, ?, 1, ?)",
+    args: [data.id, data.name, data.description, data.price, data.category, Number(maxOrder) + 1],
+  });
+  const result = await client.execute({
+    sql: "SELECT * FROM rise_menu_items WHERE id = ?",
+    args: [data.id],
+  });
+  return rowToMenuItem(result.rows[0] as unknown as Record<string, unknown>);
 }
 
-export function toggleMenuItem(id: string, active: boolean): MenuItemRow | null {
-  const db = getDb();
-  db.prepare("UPDATE menu_items SET active = ? WHERE id = ?").run(active ? 1 : 0, id);
-  return db.prepare("SELECT * FROM menu_items WHERE id = ?").get(id) as MenuItemRow | null;
+export async function toggleMenuItem(id: string, active: boolean): Promise<MenuItemRow | null> {
+  await ensureInit();
+  await client.execute({
+    sql: "UPDATE rise_menu_items SET active = ? WHERE id = ?",
+    args: [active ? 1 : 0, id],
+  });
+  const result = await client.execute({
+    sql: "SELECT * FROM rise_menu_items WHERE id = ?",
+    args: [id],
+  });
+  if (result.rows.length === 0) return null;
+  return rowToMenuItem(result.rows[0] as unknown as Record<string, unknown>);
 }

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
+import { put } from "@vercel/blob";
 import { isOpen, generateOrderNumber } from "@/lib/utils";
 import { createOrder } from "@/lib/db";
 import { sendOrderNotification } from "@/lib/notify";
@@ -63,20 +62,16 @@ export async function POST(req: NextRequest) {
 
   const orderNumber = generateOrderNumber();
   const ext = screenshot.name.split(".").pop() || "png";
-  const filename = `${orderNumber}-${Date.now()}.${ext}`;
+  const filename = `rise-payments/${orderNumber}-${Date.now()}.${ext}`;
 
-  const uploadsDir = path.join(process.cwd(), "public", "uploads");
-  await mkdir(uploadsDir, { recursive: true });
-
-  const buffer = Buffer.from(await screenshot.arrayBuffer());
-  await writeFile(path.join(uploadsDir, filename), buffer);
+  const blob = await put(filename, screenshot, { access: "public" });
 
   const total = items.reduce(
     (sum: number, item: { price: number; qty: number }) => sum + item.price * item.qty,
     0
   );
 
-  const order = createOrder({
+  const order = await createOrder({
     order_number: orderNumber,
     customer_name: customerName,
     customer_phone: customerPhone,
@@ -84,7 +79,7 @@ export async function POST(req: NextRequest) {
     delivery_location: deliveryLocation || null,
     items: JSON.stringify(items),
     total,
-    payment_screenshot: `/uploads/${filename}`,
+    payment_screenshot: blob.url,
   });
 
   // Send Telegram notification (non-blocking)

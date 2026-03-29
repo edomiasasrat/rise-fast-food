@@ -3,17 +3,17 @@ import { verifyPin, getAllMenuItems, createMenuItem, updateMenuItem, toggleMenuI
 
 export async function GET(req: NextRequest) {
   const pin = req.headers.get("x-admin-pin");
-  if (!pin || verifyPin(pin) !== "admin") {
+  if (!pin || (await verifyPin(pin)) !== "admin") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const items = getAllMenuItems();
+  const items = await getAllMenuItems();
   return NextResponse.json({ items });
 }
 
 export async function POST(req: NextRequest) {
   const pin = req.headers.get("x-admin-pin");
-  if (!pin || verifyPin(pin) !== "admin") {
+  if (!pin || (await verifyPin(pin)) !== "admin") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -30,13 +30,13 @@ export async function POST(req: NextRequest) {
 
   const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
-  const item = createMenuItem({ id, name, description, price: Number(price), category });
+  const item = await createMenuItem({ id, name, description, price: Number(price), category });
   return NextResponse.json({ item }, { status: 201 });
 }
 
 export async function PATCH(req: NextRequest) {
   const pin = req.headers.get("x-admin-pin");
-  if (!pin || verifyPin(pin) !== "admin") {
+  if (!pin || (await verifyPin(pin)) !== "admin") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -48,12 +48,12 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (action === "toggle") {
-    const item = toggleMenuItem(id, fields.active);
+    const item = await toggleMenuItem(id, fields.active);
     if (!item) return NextResponse.json({ error: "Item not found" }, { status: 404 });
     return NextResponse.json({ item });
   }
 
-  const item = updateMenuItem(id, fields);
+  const item = await updateMenuItem(id, fields);
   if (!item) return NextResponse.json({ error: "Item not found or no changes" }, { status: 404 });
   return NextResponse.json({ item });
 }

@@ -22,7 +22,7 @@ export async function PATCH(
     return NextResponse.json({ error: "x-admin-pin header is required" }, { status: 401 });
   }
 
-  const role = verifyPin(pin);
+  const role = await verifyPin(pin);
 
   if (!role) {
     return NextResponse.json({ error: "Invalid PIN" }, { status: 401 });
@@ -52,7 +52,7 @@ export async function PATCH(
     );
   }
 
-  const order = updateOrderStatus(orderId, status, reject_reason);
+  const order = await updateOrderStatus(orderId, status, reject_reason);
 
   if (!order) {
     return NextResponse.json({ error: "Order not found" }, { status: 404 });

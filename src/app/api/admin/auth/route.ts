@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "pin is required" }, { status: 400 });
   }
 
-  const role = verifyPin(pin);
+  const role = await verifyPin(pin);
 
   if (!role) {
     return NextResponse.json({ error: "Invalid PIN" }, { status: 401 });

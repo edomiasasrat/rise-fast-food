@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
+import { put } from "@vercel/blob";
 import { getOrderByNumber, updateOrderScreenshot } from "@/lib/db";
 
 export async function GET(
@@ -8,7 +7,7 @@ export async function GET(
   { params }: { params: Promise<{ orderNumber: string }> }
 ) {
   const { orderNumber } = await params;
-  const order = getOrderByNumber(orderNumber);
+  const order = await getOrderByNumber(orderNumber);
 
   if (!order) {
     return NextResponse.json({ error: "Order not found" }, { status: 404 });
@@ -22,7 +21,7 @@ export async function PATCH(
   { params }: { params: Promise<{ orderNumber: string }> }
 ) {
   const { orderNumber } = await params;
-  const existing = getOrderByNumber(orderNumber);
+  const existing = await getOrderByNumber(orderNumber);
 
   if (!existing) {
     return NextResponse.json({ error: "Order not found" }, { status: 404 });
@@ -53,15 +52,11 @@ export async function PATCH(
   }
 
   const ext = screenshot.name.split(".").pop() || "png";
-  const filename = `${orderNumber}-${Date.now()}.${ext}`;
+  const filename = `rise-payments/${orderNumber}-${Date.now()}.${ext}`;
 
-  const uploadsDir = path.join(process.cwd(), "public", "uploads");
-  await mkdir(uploadsDir, { recursive: true });
+  const blob = await put(filename, screenshot, { access: "public" });
 
-  const buffer = Buffer.from(await screenshot.arrayBuffer());
-  await writeFile(path.join(uploadsDir, filename), buffer);
-
-  const order = updateOrderScreenshot(orderNumber, `/uploads/${filename}`);
+  const order = await updateOrderScreenshot(orderNumber, blob.url);
 
   return NextResponse.json({ order });
 }

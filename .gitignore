@@ -40,9 +40,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# database
 database.sqlite
-
-# uploads
-/public/uploads/*
-!/public/uploads/.gitkeep

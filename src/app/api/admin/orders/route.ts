@@ -8,18 +8,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "x-admin-pin header is required" }, { status: 401 });
   }
 
-  const role = verifyPin(pin);
+  const role = await verifyPin(pin);
 
   if (!role) {
     return NextResponse.json({ error: "Invalid PIN" }, { status: 401 });
   }
 
   if (role === "delivery") {
-    const orders = getDeliveryOrders();
+    const orders = await getDeliveryOrders();
     return NextResponse.json({ orders });
   }
 
-  const orders = getAllOrders();
-  const stats = getTodayStats();
+  const orders = await getAllOrders();
+  const stats = await getTodayStats();
   return NextResponse.json({ orders, stats });
 }

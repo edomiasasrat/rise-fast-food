@@ -3,8 +3,8 @@ import type { Order } from "./types";
 
 export async function sendOrderNotification(order: Order): Promise<void> {
   try {
-    const token = getConfig("telegram_bot_token");
-    const chatId = getConfig("telegram_chat_id");
+    const token = await getConfig("telegram_bot_token");
+    const chatId = await getConfig("telegram_chat_id");
 
     if (!token || !chatId) return;
 
@@ -40,8 +40,8 @@ export async function sendOrderNotification(order: Order): Promise<void> {
 
 export async function sendTestNotification(): Promise<boolean> {
   try {
-    const token = getConfig("telegram_bot_token");
-    const chatId = getConfig("telegram_chat_id");
+    const token = await getConfig("telegram_bot_token");
+    const chatId = await getConfig("telegram_chat_id");
 
     if (!token || !chatId) return false;
 
